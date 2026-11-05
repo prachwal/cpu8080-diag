@@ -26,12 +26,14 @@ with the value computed by the reference model, so the program verifies tens of 
 | `DAA CMA STC CMC RLC RRC RAL RAR` | 14 336 | all 256 accumulator values, 7 flag patterns |
 | `DAD INX DCX` | 36 288 | `BC`, `DE`, `HL`, 24 edge 16-bit values squared |
 | `MOV r,r'` / `MVI` / `LXI` | 526 | all register moves, immediates, 16-bit loads, flags preserved |
-| direct tests | — | `PUSH/POP` (byte order, flag image `SZ0A0P1C`), `XTHL`, `SPHL`, `PCHL`, `LDAX/STAX`, `LDA/STA`, `LHLD/SHLD`, `XCHG`, `CALL/RET`, `RST 1..7`, all 8 conditions of `Jcc/CALLcc/RETcc` |
+| `ALU reg, random` | 28 672 | the same 8 ALU operations on `B C D E H L A` with pseudo-random (LFSR) operands, so `H`/`L` are tested with arbitrary values |
+| `DAD B/D/H, random` | 5 376 | 16-bit adds with pseudo-random operands |
+| direct tests | — | `PUSH/POP` (byte order, flag image `SZ0A0P1C`), `XTHL`, `SPHL`, `PCHL`, `LDAX/STAX`, `LDA/STA`, `LHLD/SHLD`, `XCHG`, `JMP`, `CALL/RET`, `RST 1..7`, and all 8 conditions of `Jcc/CALLcc/RETcc`, each in 4 flag states (none set, only the tested flag, all but the tested flag, all set), checking the branch decision, the stack pointer and the pushed return address |
 
-Total: 116 686 summed cases + the direct tests.
+Total: 150 734 summed cases + the direct tests. 238 of the 244 documented opcodes are executed (measured by tracing a reference core).
 
-Not covered: `IN`/`OUT`, `HLT`, `EI`/`DI`, interrupts, `RIM`/`SIM` (8085), undocumented opcodes and instruction timing.
-A full run is about 560 million 8080 clock cycles (roughly 4.5 minutes at 2 MHz).
+Not covered: `IN` (DBh), `OUT` (D3h), `HLT` (76h), `EI` (FBh), `DI` (F3h) and `RST 0` (C7h) — they depend on the host system — plus interrupts, `RIM`/`SIM` (8085), undocumented opcodes, instruction timing and wrap-around of `PC`/`SP` at 64 KB.
+Alu operand values are sampled (16 edge values squared plus pseudo-random), not exhaustive. A full run is about 740 million 8080 clock cycles (roughly 6 minutes at 2 MHz).
 
 Hardware behaviour that is checked: `ANA`/`ANI` set `AC` to the OR of bit 3 of both operands, `SUB`/`CMP` compute `AC`
 as the carry of `A + ~operand + 1`, `DCR` sets `AC` unless the low nibble was zero, `DAA` follows the documented
@@ -51,9 +53,11 @@ Direct-test failures print ` [Txx ` with the test number (see `src/direct.inc`).
 ## How it was verified
 
 * The reference model and the program agree **case by case** (tracing build, `tools/trace_compare.py`) on an
-  independent 8080 core: 0 mismatches over 116 686 cases, and the real `.COM` reports all groups OK.
-* **Mutation testing:** 22 deliberately broken variants of that core (wrong flags, off-by-one results, broken
-  register moves, ...) were all detected. An earlier additive checksum missed three of them, which is why CRC-32 is used.
+  independent 8080 core: 0 mismatches over 150 734 cases, and the real `.COM` reports all groups OK.
+* **Mutation testing:** 31 deliberately broken variants of that core (wrong flags, off-by-one results, broken
+  register moves, conditional jumps/calls/returns reading the wrong flag or mishandling the stack, ...) are all detected,
+  while a correct variant used as a control passes. An earlier additive checksum missed three of them and the first
+  branch test missed five, which is why CRC-32 and the per-flag branch states are used.
 * `z88dk-ticks -m8080` is **not** a valid reference: it emulates the Z80 flag logic in "8080 mode" (e.g. parity/overflow
   after arithmetic, `H` after `DAD`, the `N` flag in `DAA`) and disagrees with the 8080 documentation.
 * Not verified on real 8080 silicon. If a real chip disagrees with the model, please open an issue.

@@ -31,6 +31,8 @@ start:  lxi sp,stack_top
         call g_mov
         call g_mvi
         call g_lxi
+        call g_ralu
+        call g_rdad
         call g_direct
 
         lda fails
@@ -662,6 +664,107 @@ gx_l:   lxi h,tab_lxi_ops
         lxi d,exp_lxi
         jmp check_crc
 
+
+; lfsr_next8: osiem krokow rejestru LFSR (Galois, wielomian B400h); zwraca HL = nowy stan.
+lfsr_next8:
+        lhld lfsr
+        mvi b,8
+lf_l:   mov a,h
+        ora a
+        rar
+        mov h,a
+        mov a,l
+        rar
+        mov l,a
+        jnc lf_nx
+        mov a,h
+        xri 0xB4
+        mov h,a
+lf_nx:  dcr b
+        jnz lf_l
+        shld lfsr
+        ret
+
+; g_ralu: ALU na rejestrach B,C,D,E,H,L,A z losowymi (LFSR) wartosciami; H=L=B=C=D=E=b.
+g_ralu: lxi h,dims_ralu
+        call odo_init
+        call crc_init
+        lxi h,0xACE1
+        shld lfsr
+gr_l:   lxi h,tab_alu_ops
+        lda odo_ctr
+        call tbl8
+        mov b,a
+        lxi h,tab_r7
+        lda odo_ctr+1
+        call tbl8
+        ora b
+        sta op0
+        call clr_ops
+        lxi d,tab_f2
+        lda odo_ctr+2
+        call tbl8_de
+        sta c_f
+        call lfsr_next8
+        shld c_x
+        mov a,l
+        mov h,a
+        shld in_bc
+        shld in_de
+        shld in_hl
+        mvi a,0x6D
+        sta c_m0
+        mvi a,0x92
+        sta c_m1
+        lda c_x+1
+        mov h,a
+        lda c_f
+        mov l,a
+        shld in_af
+        call run_case
+        call fold_all
+        call odo_next
+        jnc gr_l
+        lxi h,name_ralu
+        lxi d,exp_ralu
+        jmp check_crc
+
+; g_rdad: DAD B/D/H z losowymi 16-bitowymi HL i rp.
+g_rdad: lxi h,dims_rdad
+        call odo_init
+        call crc_init
+        lxi h,0xACE1
+        shld lfsr
+grd_l:  lxi h,tab_dad_ops
+        lda odo_ctr
+        call tbl8
+        sta op0
+        call clr_ops
+        lxi d,tab_f7
+        lda odo_ctr+1
+        call tbl8_de
+        sta c_f
+        call lfsr_next8
+        shld in_hl
+        call lfsr_next8
+        shld in_bc
+        shld in_de
+        mvi a,0x6D
+        sta c_m0
+        mvi a,0x92
+        sta c_m1
+        lda c_f
+        mov l,a
+        mvi h,0xA1
+        shld in_af
+        call run_case
+        call fold_all
+        call odo_next
+        jnc grd_l
+        lxi h,name_rdad
+        lxi d,exp_rdad
+        jmp check_crc
+
 ; ---------------------------------------------------------------------------------- testy bezposrednie
         include "direct.inc"
 
@@ -676,6 +779,8 @@ name_dad:    db "DAD INX DCX (BC DE HL)                    ",0
 name_mov:    db "MOV r,r'                                  ",0
 name_mvi:    db "MVI r,n                                   ",0
 name_lxi:    db "LXI rp,nn                                 ",0
+name_ralu:   db "ALU reg, dane losowe (B C D E H L A)      ",0
+name_rdad:   db "DAD B/D/H, dane losowe                    ",0
 name_direct: db "Testy bezposrednie (stos, skoki, RST, pamiec)",0
 
 msg_banner:  db "DIAG8080 - test procesora Intel 8080",13,10,0
@@ -693,6 +798,8 @@ odo_n:       db 0
 odo_lim:     defs 6
 odo_ctr:     defs 6
 crc:         defs 4
+lfsr:        dw 0
+c_x:         dw 0
 exp_ptr:     dw 0
 op0:         db 0
 op1:         db 0

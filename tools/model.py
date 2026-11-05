@@ -22,6 +22,7 @@ INCDEC_BASE = [0x04, 0x05]                                    # INR r, DCR r (re
 ACC_OPS = [0x27, 0x2F, 0x37, 0x3F, 0x07, 0x0F, 0x17, 0x1F]    # DAA CMA STC CMC RLC RRC RAL RAR
 DAD_OPS = [0x09, 0x19, 0x29, 0x03, 0x13, 0x23, 0x0B, 0x1B, 0x2B]  # DAD B,D,H  INX B,D,H  DCX B,D,H
 LXI_OPS = [0x01, 0x11, 0x21]
+R7 = [0, 1, 2, 3, 4, 5, 7]                                    # rejestry operandow bez M (do grupy losowej)
 REG = ['B', 'C', 'D', 'E', 'H', 'L', 'M', 'A']
 
 FS, FZ, FA, FP, FC = 0x80, 0x40, 0x10, 0x04, 0x01
@@ -154,6 +155,8 @@ DIMS = {
     'mov':    [63, 2],
     'mvi':    [8, 2, 16],
     'lxi':    [3, 2, 24],
+    'ralu':   [8, 7, 2, 16, 16],
+    'rdad':   [3, 7, 16, 16],
 }
 
 
@@ -254,8 +257,54 @@ def g_lxi(c):
     return s
 
 
-GROUPS = [('alu', g_alu), ('imm', g_imm), ('incdec', g_incdec), ('acc', g_acc), ('dad', g_dad),
-          ('mov', g_mov), ('mvi', g_mvi), ('lxi', g_lxi)]
+def lfsr8(x):
+    """Osiem krokow 16-bitowego rejestru LFSR (Galois, wielomian B400h), jak w programie."""
+    for _ in range(8):
+        lsb = x & 1
+        x >>= 1
+        if lsb:
+            x ^= 0xB400
+    return x
+
+
+LFSR_SEED = 0xACE1
+
+
+def make_ralu():
+    st = {'x': LFSR_SEED}
+
+    def g(c):
+        op, ri, fi, _, _ = c
+        st['x'] = lfsr8(st['x'])
+        a, b, f = st['x'] >> 8, st['x'] & 0xFF, F2[fi]
+        s = new_state(a, f, b, b, b, b, b, b, 0x6D, 0x92)
+        res, nf = alu(op, a, getr(s, R7[ri]), f & FC)
+        s['A'], s['F'] = res, nf
+        return s
+    return g
+
+
+def make_rdad():
+    st = {'x': LFSR_SEED}
+
+    def g(c):
+        op, fi, _, _ = c
+        st['x'] = lfsr8(st['x'])
+        hl = st['x']
+        st['x'] = lfsr8(st['x'])
+        rp, f = st['x'], F7[fi]
+        s = new_state(0xA1, f, rp >> 8, rp & 0xFF, rp >> 8, rp & 0xFF, hl >> 8, hl & 0xFF, 0x6D, 0x92)
+        hi, lo = [('B', 'C'), ('D', 'E'), ('H', 'L')][op]
+        t = pair(s, 'H', 'L') + pair(s, hi, lo)
+        setpair(s, 'H', 'L', t)
+        s['F'] = (f & 0xFE) | (FC if t > 0xFFFF else 0)
+        return s
+    return g
+
+
+GROUPS = [('alu', lambda: g_alu), ('imm', lambda: g_imm), ('incdec', lambda: g_incdec), ('acc', lambda: g_acc),
+          ('dad', lambda: g_dad), ('mov', lambda: g_mov), ('mvi', lambda: g_mvi), ('lxi', lambda: g_lxi),
+          ('ralu', make_ralu), ('rdad', make_rdad)]
 
 
 def hexb(xs):
@@ -264,6 +313,7 @@ def hexb(xs):
 
 def emit():
     out = ["; WYGENEROWANE przez tools/model.py - nie edytuj recznie.", ""]
+    out += ["tab_r7:  db " + hexb(R7)]
     out += ["tab_v16: db " + hexb(V16), "tab_f2:  db " + hexb(F2), "tab_f7:  db " + hexb(F7)]
     out += ["tab_w24: dw " + ",".join("0x%04X" % w for w in W24)]
     out += ["tab_alu_ops: db " + hexb(ALU_OPS), "tab_imm_ops: db " + hexb(IMM_OPS),
@@ -273,7 +323,8 @@ def emit():
         out.append("tab_crc%d: db %s" % (i, hexb([(c >> (8 * i)) & 0xFF for c in CRC_T])))
     out.append("")
     total = 0
-    for name, fn in GROUPS:
+    for name, factory in GROUPS:
+        fn = factory()
         d = DIMS[name]
         n = 1
         for x in d:

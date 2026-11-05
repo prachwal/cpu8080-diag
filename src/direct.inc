@@ -264,9 +264,11 @@ t09_addr:
         mvi h,0
         ret
 
-; T10 Jcc, CALLcc, RETcc: wszystkie 8 warunkow, przy wszystkich flagach wyzerowanych (F=02h)
-; i przy wszystkich ustawionych (F=D7h). Warunki parzyste (NZ,NC,PO,P) wykonuja sie przy fladze
-; zerowej, nieparzyste (Z,C,PE,M) przy fladze ustawionej.
+; T10 Jcc, CALLcc, RETcc: wszystkie 8 warunkow, kazdy w 4 stanach flag: wszystkie zerowe (F=02h),
+; tylko flaga warunku, wszystkie poza flaga warunku, wszystkie ustawione (F=D7h). Dzieki temu
+; instrukcja czytajaca zla flage jest wykrywana. Dodatkowo sprawdzane: SP po operacji oraz adres
+; powrotu zapisany przez CALLcc. Warunki parzyste (NZ,NC,PO,P) wykonuja sie przy fladze zerowej,
+; nieparzyste (Z,C,PE,M) przy fladze ustawionej.
 t10:    xra a
         sta tc
 t10_c:  lda tc
@@ -284,24 +286,46 @@ t10_c:  lda tc
         dad d
         mov a,m
         sta t10_rop
+        lxi h,tab_cc_mask
+        dad d
+        mov a,m
+        sta tmask
         xra a
         sta tf
 t10_f:  lda tf
         ora a
-        lxi h,0x0002
+        mvi a,0x02
         jz t10_fs
-        lxi h,0x00D7
-t10_fs: shld tflag
+        lda tf
+        cpi 1
+        jnz t10_f2
+        lda tmask
+        ori 0x02
+        jmp t10_fs
+t10_f2: cpi 2
+        jnz t10_f3
+        lda tmask
+        cma
+        ani 0xD7
+        ori 0x02
+        jmp t10_fs
+t10_f3: mvi a,0xD7
+t10_fs: mov l,a
+        mvi h,0
+        shld tflag
         lda tc
         ani 1
         mov b,a
         lda tf
+        ani 1
         xra b
         xri 1
         ani 1
         sta texp
+        ; --- Jcc
         xra a
         sta tdet
+        lxi sp,dstack_top
         lhld tflag
         push h
         pop psw
@@ -317,7 +341,15 @@ t10_jn: lda tdet
         jz t10_c1
         mvi a,0x10
         call dfail
-t10_c1: xra a
+t10_c1: lxi h,0
+        dad sp
+        lxi d,dstack_top
+        call eq16
+        jz t10_c2
+        mvi a,0x13
+        call dfail
+        ; --- CALLcc
+t10_c2: xra a
         sta tdet
         lxi sp,dstack_top
         lhld tflag
@@ -325,17 +357,50 @@ t10_c1: xra a
         pop psw
 t10_cop: nop
         dw t10_ct
+t10_cnt:
+        lxi h,0
+        dad sp
+        shld tsp
         jmp t10_cn
 t10_ct: mvi a,1
         sta tdet
+        lxi h,0
+        dad sp
+        shld tsp
+        mov e,m
+        inx h
+        mov d,m
+        xchg
+        shld tret
 t10_cn: lxi sp,dstack_top
         lda tdet
         mov b,a
         lda texp
         cmp b
-        jz t10_r1
+        jz t10_c3
         mvi a,0x11
         call dfail
+t10_c3: lda texp
+        ora a
+        lxi h,dstack_top
+        jz t10_c4
+        lxi h,dstack_top-2
+t10_c4: xchg
+        lhld tsp
+        call eq16
+        jz t10_c5
+        mvi a,0x14
+        call dfail
+t10_c5: lda texp
+        ora a
+        jz t10_r1
+        lhld tret
+        lxi d,t10_cnt
+        call eq16
+        jz t10_r1
+        mvi a,0x15
+        call dfail
+        ; --- RETcc: adres powrotu t10_rt lezy na stosie, ustawia tdet
 t10_r1: xra a
         sta tdet
         lxi sp,dstack_top
@@ -345,27 +410,77 @@ t10_r1: xra a
         push h
         pop psw
 t10_rop: nop
+        lxi h,0
+        dad sp
+        shld tsp
         jmp t10_rn
 t10_rt: mvi a,1
         sta tdet
+        lxi h,0
+        dad sp
+        shld tsp
 t10_rn: lxi sp,dstack_top
         lda tdet
         mov b,a
         lda texp
         cmp b
-        jz t10_nx
+        jz t10_r2
         mvi a,0x12
+        call dfail
+t10_r2: lda texp
+        ora a
+        lxi h,dstack_top-2
+        jz t10_r3
+        lxi h,dstack_top
+t10_r3: xchg
+        lhld tsp
+        call eq16
+        jz t10_nx
+        mvi a,0x16
         call dfail
 t10_nx: lda tf
         inr a
         sta tf
-        cpi 2
+        cpi 4
         jc t10_f
         lda tc
         inr a
         sta tc
         cpi 8
         jc t10_c
+
+; T13 JMP bezwarunkowy omija kod; T14 CALL/RET nie zmienia flag.
+t13:    lxi sp,dstack_top
+        jmp t13_a
+        mvi a,0x17
+        call dfail
+        jmp t13_z
+t13_a:  nop
+t13_z:  lxi h,0x00D7
+        push h
+        pop psw
+        call t13_sub
+        push psw
+        pop h
+        mov a,l
+        cpi 0xD7
+        jz t13_ok
+        mvi a,0x18
+        call dfail
+t13_ok: jmp t13_end
+t13_sub:
+        ret
+t13_end:
+
+; eq16: porownanie HL z DE; Z = rowne.
+        jmp eq16_skip
+eq16:   mov a,h
+        cmp d
+        rnz
+        mov a,l
+        cmp e
+        ret
+eq16_skip:
 
         lhld saved_sp
         sphl
@@ -402,8 +517,12 @@ tf:     db 0
 texp:   db 0
 tdet:   db 0
 tflag:  dw 0
+tmask:  db 0
+tsp:    dw 0
+tret:   dw 0
 rsave:  db 0,0,0
 rres:   db 0
 tab_cc_jmp:  db 0xC2,0xCA,0xD2,0xDA,0xE2,0xEA,0xF2,0xFA
 tab_cc_call: db 0xC4,0xCC,0xD4,0xDC,0xE4,0xEC,0xF4,0xFC
 tab_cc_ret:  db 0xC0,0xC8,0xD0,0xD8,0xE0,0xE8,0xF0,0xF8
+tab_cc_mask: db 0x40,0x40,0x01,0x01,0x04,0x04,0x80,0x80

@@ -9,7 +9,8 @@ lines = [l.strip() for l in open(sys.argv[1], errors="replace") if l.strip()]
 want = sys.argv[2:] or [n for n, _ in model.GROUPS]
 pos = 0
 KEYS = ("A", "F", "B", "C", "D", "E", "H", "L", "M0", "M1")
-for name, fn in model.GROUPS:
+for name, factory in model.GROUPS:
+    fn = factory()
     dims = model.DIMS[name]
     n = 1
     for d in dims:
