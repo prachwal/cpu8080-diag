@@ -16,7 +16,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Reference tables match the model
-        run: python3 tools/model.py --check src/generated.inc
+        run: |
+          python3 tools/model.py --check src/generated.inc
           python3 tools/model.py --check src/generated85.inc --cpu 8085
 
       - name: Assemble (z88dk)
