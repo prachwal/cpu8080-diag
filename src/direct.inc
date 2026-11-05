@@ -63,7 +63,12 @@ t02:    lxi sp,dstack_top
         cpi 0x5A
         jnz t02f
         mov a,l
+        IFDEF I8085
+        ani 0xD5
+        cpi 0xD5
+        ELSE
         cpi 0xD7
+        ENDIF
         jz t03
 t02f:   lxi sp,dstack_top
         mvi a,0x02
@@ -463,7 +468,12 @@ t13_z:  lxi h,0x00D7
         push psw
         pop h
         mov a,l
+        IFDEF I8085
+        ani 0xD5
+        cpi 0xD5
+        ELSE
         cpi 0xD7
+        ENDIF
         jz t13_ok
         mvi a,0x18
         call dfail
@@ -481,6 +491,46 @@ eq16:   mov a,h
         cmp e
         ret
 eq16_skip:
+
+
+        IFDEF I8085
+; T19 RIM/SIM (tylko 8085): SIM z MSE (bit 3) ustawia maski M7.5,M6.5,M5.5 (bity 2..0), RIM je zwraca
+; w bitach 2..0; SIM bez MSE masek nie zmienia. Na koncu maski sa zerowane.
+t19:    lxi sp,dstack_top
+        mvi a,0x0F
+        sim
+        rim
+        ani 0x07
+        cpi 0x07
+        jnz t19f
+        mvi a,0x0A
+        sim
+        rim
+        ani 0x07
+        cpi 0x02
+        jnz t19f
+        mvi a,0x05
+        sim
+        rim
+        ani 0x07
+        cpi 0x02
+        jnz t19f
+        mvi a,0x0C
+        sim
+        rim
+        ani 0x07
+        cpi 0x04
+        jnz t19f
+        mvi a,0x08
+        sim
+        rim
+        ani 0x07
+        jz t19ok
+t19f:   mvi a,0x19
+        call dfail
+t19ok:  mvi a,0x08
+        sim
+        ENDIF
 
         lhld saved_sp
         sphl

@@ -17,23 +17,26 @@ jobs:
 
       - name: Reference tables match the model
         run: python3 tools/model.py --check src/generated.inc
+          python3 tools/model.py --check src/generated85.inc --cpu 8085
 
       - name: Assemble (z88dk)
         run: |
           mkdir -p build
           docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/src -w /src z88dk/z88dk \
-            z88dk-z80asm -m8080 -b -Isrc -obuild/DIAG8080.bin src/diag8080.asm
+            sh -c "z88dk-z80asm -m8080 -b -Isrc -obuild/DIAG8080.bin src/diag8080.asm &&
+                   z88dk-z80asm -m8085 -b -DI8085 -Isrc -obuild/DIAG8085.bin src/diag8080.asm"
 
       - name: Build matches dist/
         run: |
           cmp build/DIAG8080.bin dist/DIAG8080.COM
+          cmp build/DIAG8085.bin dist/DIAG8085.COM
           (cd dist && sha256sum -c SHA256SUMS)
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp dist/DIAG8080.COM dist/SHA256SUMS .
+          cp dist/DIAG8080.COM dist/DIAG8085.COM dist/SHA256SUMS .
           {
             cat .github/release-notes.md
             echo
@@ -41,5 +44,5 @@ jobs:
             cat SHA256SUMS
             echo '```'
           } > notes.md
-          gh release create "$GITHUB_REF_NAME" DIAG8080.COM SHA256SUMS \
+          gh release create "$GITHUB_REF_NAME" DIAG8080.COM DIAG8085.COM SHA256SUMS \
             --title "DIAG8080 $GITHUB_REF_NAME" --notes-file notes.md --verify-tag

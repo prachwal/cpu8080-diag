@@ -11,6 +11,8 @@ Uzycie:  python3 tools/model.py --emit src/generated.inc
 """
 import sys
 
+CPU85 = "--cpu" in sys.argv and sys.argv[sys.argv.index("--cpu") + 1] == "8085"
+
 V16 = [0x00, 0x01, 0x0F, 0x10, 0x1F, 0x7F, 0x80, 0x81, 0x8F, 0xF0, 0xFF, 0x55, 0xAA, 0x3C, 0xC3, 0x7E]
 F2 = [0x02, 0xD7]
 F7 = [0x02, 0x03, 0x12, 0x06, 0x42, 0x82, 0xD7]
@@ -77,7 +79,7 @@ def alu(kind, a, b, cy_in):
         res, cy = t & 0xFF, t < 0
         ac = ((a & 0xF) + ((~b) & 0xF) + (1 - c)) > 0xF      # 8080: AC = przeniesienie z bitu 3 sumy A + ~B + ~C
     elif kind == 4:
-        res, cy, ac = a & b, False, bool((a | b) & 0x08)       # 8080: AC = OR bitow 3 argumentow
+        res, cy, ac = a & b, False, True if CPU85 else bool((a | b) & 0x08)   # 8080: AC = OR bitow 3; 8085: AC zawsze 1
     elif kind == 5:
         res, cy, ac = a ^ b, False, False
     else:
@@ -116,7 +118,8 @@ CRC_T = _crc_table()
 def fold_state(crc, s):
     """CRC-32 (odbity, wielomian EDB88320h) po kolejnych bajtach stanu; bez koncowego XOR."""
     for k in ('A', 'F', 'B', 'C', 'D', 'E', 'H', 'L', 'M0', 'M1'):
-        crc = (crc >> 8) ^ CRC_T[(crc ^ s[k]) & 0xFF]
+        v = s[k] & 0xD5 if (CPU85 and k == 'F') else s[k]      # 8085: bity 1,3,5 flagi to V/X5 (nie sprawdzane)
+        crc = (crc >> 8) ^ CRC_T[(crc ^ v) & 0xFF]
     return crc
 
 

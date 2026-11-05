@@ -5,6 +5,8 @@ import sys
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import model
 
+MASK_F = 0xD5 if model.CPU85 else 0xFF
+
 lines = [l.strip() for l in open(sys.argv[1], errors="replace") if l.strip()]
 want = sys.argv[2:] or [n for n, _ in model.GROUPS]
 pos = 0
@@ -26,8 +28,8 @@ for name, factory in model.GROUPS:
     first = []
     for ctr, got in zip(model.odometer(dims), chunk):
         s = fn(ctr)
-        exp = "".join("%02X" % s[k] for k in KEYS)
-        if exp != got:
+        exp = "".join("%02X" % (s[k] & MASK_F if k == "F" else s[k]) for k in KEYS)
+        if exp != got.upper()[:2] + "%02X" % (int(got[2:4], 16) & MASK_F) + got[4:]:
             bad += 1
             if len(first) < 12:
                 first.append((ctr, got, exp))

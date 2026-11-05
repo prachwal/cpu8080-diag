@@ -16,26 +16,31 @@ jobs:
 
       - name: Reference tables match the model
         run: python3 tools/model.py --check src/generated.inc
+          python3 tools/model.py --check src/generated85.inc --cpu 8085
 
       - name: Assemble (z88dk)
         run: |
           mkdir -p build
           docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/src -w /src z88dk/z88dk \
-            z88dk-z80asm -m8080 -b -Isrc -obuild/DIAG8080.bin src/diag8080.asm
+            sh -c "z88dk-z80asm -m8080 -b -Isrc -obuild/DIAG8080.bin src/diag8080.asm &&
+                   z88dk-z80asm -m8085 -b -DI8085 -Isrc -obuild/DIAG8085.bin src/diag8080.asm"
 
       - name: Build is reproducible and matches dist/
         run: |
           cmp build/DIAG8080.bin dist/DIAG8080.COM
+          cmp build/DIAG8085.bin dist/DIAG8085.COM
           (cd dist && sha256sum -c SHA256SUMS)
 
       - name: Sanity of the image
         run: |
           python3 - <<'EOF'
-          data = open("dist/DIAG8080.COM", "rb").read()
-          assert 3000 < len(data) < 8000, len(data)
-          assert data[0] == 0x31, "program must start with LXI SP"       # org 0100h
-          assert b"WSZYSTKIE TESTY ZALICZONE" in data
-          print("size", len(data))
+          for name in ("DIAG8080", "DIAG8085"):
+              data = open("dist/%s.COM" % name, "rb").read()
+              assert 3000 < len(data) < 8000, (name, len(data))
+              assert data[0] == 0x31, "program must start with LXI SP"       # org 0100h
+              assert b"WSZYSTKIE TESTY ZALICZONE" in data
+              assert name.encode() in data
+              print(name, "size", len(data))
           EOF
 
       - uses: actions/upload-artifact@v4
@@ -43,4 +48,5 @@ jobs:
           name: DIAG8080
           path: |
             dist/DIAG8080.COM
+            dist/DIAG8085.COM
             dist/SHA256SUMS

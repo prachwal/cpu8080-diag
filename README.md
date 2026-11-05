@@ -1,6 +1,6 @@
 # cpu8080-diag
 
-A self-checking **Intel 8080 CPU diagnostic** for CP/M (`DIAG8080.COM`, loads at `0100h`), released under the **MIT license**.
+Self-checking **Intel 8080 and 8085 CPU diagnostics** for CP/M (`DIAG8080.COM`, `DIAG8085.COM`, load at `0100h`), released under the **MIT license**.
 
 It exists so that 8080 emulators and FPGA/hardware cores can be tested with a program that may be freely redistributed
 (some classic 8080 test programs have no clear redistribution terms).
@@ -39,6 +39,23 @@ Hardware behaviour that is checked: `ANA`/`ANI` set `AC` to the OR of bit 3 of b
 as the carry of `A + ~operand + 1`, `DCR` sets `AC` unless the low nibble was zero, `DAA` follows the documented
 two-step correction, `PUSH PSW` always produces flag bits `S Z 0 AC 0 P 1 CY`.
 
+## Intel 8085 (`DIAG8085.COM`)
+
+The 8085 is an 8080 superset, so both programs are built from the same source (`-DI8085` selects the 8085 variant).
+What differs:
+
+* `ANA`/`ANI` always set `AC` (the 8080 sets it to the OR of bit 3 of both operands).
+* Flag bits 1, 3 and 5 are ignored (the 8085 uses them for the undocumented `V` and `X5` flags).
+* `T19` checks `SIM`/`RIM`: `SIM` with `MSE` (bit 3) writes the masks `M7.5 M6.5 M5.5` (bits 2..0), `RIM` reads them back
+  in bits 2..0, and `SIM` without `MSE` leaves them unchanged. Serial lines, interrupt latches and `IE` are not checked.
+* 246 documented opcodes, 240 executed (the same six as for the 8080 are not covered).
+
+Verification of the 8085 variant: on the 8085 core from `proc-vibe-001`, the unmodified core fails exactly where it deviates
+from the Intel documentation (`SIM` bit positions and `ANA`/`ANI` `AC`, found by this test) and everything else matches the
+model; with those two behaviours corrected, every group passes. Nine deliberately broken variants were all detected.
+The two corrections encode the documented 8085 behaviour and were **not** confirmed on a second independent implementation or
+on silicon.
+
 ## Output
 
 ```
@@ -67,8 +84,8 @@ Direct-test failures print ` [Txx ` with the test number (see `src/direct.inc`).
 Requires `z88dk` (`z88dk-z80asm`) and `python3`.
 
 ```
-make            # dist/DIAG8080.COM (CP/M build)
-make raw        # build/diag8080-raw.bin: output with OUT 80h instead of BDOS (for emulators without CP/M)
+make            # dist/DIAG8080.COM, dist/DIAG8085.COM, dist/SHA256SUMS (CP/M builds)
+make raw        # build/diag8080-raw.bin, build/diag8085-raw.bin: output with OUT 80h instead of BDOS (for emulators without CP/M)
 make model      # regenerate src/generated.inc from tools/model.py
 make check      # fail if src/generated.inc is out of date
 ```

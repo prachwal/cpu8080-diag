@@ -175,6 +175,9 @@ fold_all:
         lda out_af+1
         call fold
         lda out_af
+        IFDEF I8085
+        ani 0xD5
+        ENDIF
         call fold
         lda out_bc+1
         call fold
@@ -769,7 +772,11 @@ grd_l:  lxi h,tab_dad_ops
         include "direct.inc"
 
 ; ---------------------------------------------------------------------------------- dane
+        IFDEF I8085
+        include "generated85.inc"
+        ELSE
         include "generated.inc"
+        ENDIF
 
 name_alu:    db "ALU reg (ADD ADC SUB SBB ANA XRA ORA CMP) ",0
 name_imm:    db "ALU imm (ADI ACI SUI SBI ANI XRI ORI CPI) ",0
@@ -783,7 +790,11 @@ name_ralu:   db "ALU reg, dane losowe (B C D E H L A)      ",0
 name_rdad:   db "DAD B/D/H, dane losowe                    ",0
 name_direct: db "Testy bezposrednie (stos, skoki, RST, pamiec)",0
 
+        IFDEF I8085
+msg_banner:  db "DIAG8085 - test procesora Intel 8085",13,10,0
+        ELSE
 msg_banner:  db "DIAG8080 - test procesora Intel 8080",13,10,0
+        ENDIF
 msg_ok:      db "OK",13,10,0
 msg_got:     db "FAIL got=",0
 msg_exp:     db " exp=",0
